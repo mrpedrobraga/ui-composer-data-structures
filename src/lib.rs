@@ -1,0 +1,12 @@
+//! # UI Composer Data Structures
+//! 
+//! [UI Composer](https://mrpedrobraga.com/software/ui-composer) is a rust library for creating user interfaces.
+//! It notably uses something called 'the Editor pattern', where UI itself lacks any state and, instead, "observes"
+//! and edits external state.
+//! 
+//! For example, a `Checkbox` edits a `bool`, a `TextEdit` edits a `String`, a `Button` edits an `FnMut`, etc...
+//! And compositions of primitives (like structs, enums) are edited by containers.
+//! 
+//! This crate provides some extra common data structures for creating UI around like paginators, alerts, cards.
+
+pub mod paginator;

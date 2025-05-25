@@ -1,0 +1,8 @@
+[package]
+name = "ui-composer-data-structures"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures-signals = "0.3.34"
+serde = "1.0.219"
