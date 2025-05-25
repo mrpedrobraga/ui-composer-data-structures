@@ -40,17 +40,59 @@
 //! Implementing paginator is a similar experience to implementing [Iterator].
 //! I recommend reading its documentation page to understand State, Adapters, Infinity, etc.
 
+use std::marker::PhantomData;
+
 /// The core paginator trait.
 pub trait Paginator<'pag> {
-    // The type of element this paginator yields.
+    /// The type of element this paginator yields.
     type Item<'view> where 'pag: 'view, Self: 'view;
 
-    // Returns the next element or `None` if you've reached the end.
+    /// Returns the next element or `None` if you've reached the end.
     fn next<'view>(&'view mut self) -> Option<Self::Item<'view>> where 'pag: 'view;
 
-    // Returns the next element or `None` if you've reached the start.
+    /// Returns the next element or `None` if you've reached the start.
     fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>> where 'pag: 'view;
 
+    /// Adapts this paginator to one that also yields the index of the current element.
+    fn enumerate(self) -> Enumerate<'pag, Self> where Self: Sized {
+        Enumerate { index: 0, inner: self, _marker: &PhantomData }
+    }
+}
+
+/// Adapter that enumerates the elements of the undelying paginator.
+pub struct Enumerate<'pag, A: Paginator<'pag>> {
+    index: usize,
+    inner: A,
+    _marker: &'pag PhantomData<()>
+}
+
+impl<'pag, A: Paginator<'pag>> Paginator<'pag> for Enumerate<'pag, A> {
+    type Item<'view> = (usize, A::Item<'view>) where 'pag: 'view, Self: 'view;
+
+    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>> where 'pag: 'view {
+        self.inner.next().map(|element| {
+            let old_index = self.index;
+            self.index += 1;
+            (old_index, element)
+        })
+    }
+
+    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>> where 'pag: 'view {
+        self.inner.previous().map(|element| {
+            let old_index = self.index;
+            self.index -= 1;
+            (old_index, element)
+        })
+    }
+}
+
+#[test]
+fn test_enumerate() {
+    let items = vec!["Hello", "World"];
+    let mut o = items.paginate().enumerate();
+
+    assert_eq!(o.next(), Some((0, &"Hello")));
+    assert_eq!(o.next(), Some((1, &"World")));
 }
 
 /// Trait for conversion into a temporary paginator.
