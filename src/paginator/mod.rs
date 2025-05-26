@@ -40,6 +40,10 @@
 //! Implementing paginator is a similar experience to implementing [Iterator].
 //! I recommend reading its documentation page to understand State, Adapters, Infinity, etc.
 
+use adapters::{Chain, ChainState, Enumerate, Map};
+
+pub mod adapters;
+
 /// The core paginator trait.
 #[must_use = "paginators are lazy and do nothing unless consumed"]
 pub trait Paginator<'pag> {
@@ -68,6 +72,7 @@ pub trait Paginator<'pag> {
     }
 
     /// Adapts this paginator to one that also yields the index of the current element.
+    #[inline]
     fn enumerate(self) -> Enumerate<Self>
     where
         Self: Sized,
@@ -79,6 +84,7 @@ pub trait Paginator<'pag> {
     }
 
     /// Returns a new paginator that yields elements from B after A's elements run out.
+    #[inline]
     fn chain<B>(self, other: B) -> Chain<Self, B>
     where
         Self: Sized,
@@ -92,187 +98,16 @@ pub trait Paginator<'pag> {
     }
 }
 
-/// Struct created by [Paginator::map]. See that method for more information.
-#[must_use = "paginators are lazy and do nothing unless consumed"]
-pub struct Map<A, F> {
-    inner: A,
-    f: F,
-}
+// #[test]
+// fn test_chain_paginator2() {
+//     struct Vecs(pub Vec<i32>, pub Vec<i32>);
+//     let vecs = Vecs(vec![0, 1], vec![2, 3]);
 
-impl<'pag, A, F, Output> Paginator<'pag> for Map<A, F>
-where
-    A: Paginator<'pag>,
-    for<'view> F: Fn(A::Item<'view>) -> Output,
-{
-    type Item<'view>
-        = Output
-    where
-        'pag: 'view,
-        Self: 'view;
-
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        self.inner.next().map(&self.f)
-    }
-
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        self.inner.previous().map(&self.f)
-    }
-}
-
-#[test]
-fn test_map_paginator() {
-    let a = Box::leak(Box::new(vec![20, 30]));
-    let mut p = a.paginate().map(|el| el.to_string());
-
-    assert_eq!(p.next(), Some(String::from("20")));
-    assert_eq!(p.next(), Some(String::from("30")));
-}
-
-/// Struct created by [Paginator::enumerate]. See that method for more information.
-#[must_use = "paginators are lazy and do nothing unless consumed"]
-pub struct Enumerate<A> {
-    index: usize,
-    inner: A,
-}
-
-impl<'pag, A: Paginator<'pag>> Paginator<'pag> for Enumerate<A> {
-    type Item<'view>
-        = (usize, A::Item<'view>)
-    where
-        'pag: 'view,
-        Self: 'view;
-
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        self.inner.next().map(|element| {
-            let old_index = self.index;
-            self.index += 1;
-            (old_index, element)
-        })
-    }
-
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        self.inner.previous().map(|element| {
-            let old_index = self.index;
-            self.index -= 1;
-            (old_index, element)
-        })
-    }
-}
-
-#[test]
-fn test_enumerate_paginator() {
-    let items = vec!["Hello", "World"];
-    let mut o = items.paginate().enumerate();
-
-    assert_eq!(o.next(), Some((0, &"Hello")));
-    assert_eq!(o.next(), Some((1, &"World")));
-}
-
-/// Struct created by [Paginator::chain]. See that method for more information..
-#[must_use = "paginators are lazy and do nothing unless consumed"]
-pub struct Chain<A, B> {
-    disjunctor: ChainState,
-    inner_a: A,
-    inner_b: B,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ChainState {
-    First,
-    Second,
-}
-
-impl<'pag, A, B> Paginator<'pag> for Chain<A, B>
-where
-    A: 'pag + Paginator<'pag>,
-    B: 'pag + Paginator<'pag>,
-    for<'view> B::Item<'view>: Into<A::Item<'view>>,
-{
-    type Item<'view>
-        = A::Item<'view>
-    where
-        'pag: 'view;
-
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        if let ChainState::First = self.disjunctor {
-            let next_a = self.inner_a.next();
-            if let Some(next_a) = next_a {
-                return Some(next_a);
-            } else {
-                self.disjunctor = ChainState::Second
-            }
-        }
-
-        if let ChainState::Second = self.disjunctor {
-            let next_b = self.inner_b.next();
-            if let Some(next_b) = next_b {
-                self.disjunctor = ChainState::Second;
-                return Some(next_b.into());
-            }
-        }
-
-        None
-    }
-
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        if let ChainState::Second = self.disjunctor {
-            let previous_b = self.inner_b.previous();
-            if let Some(previous_b) = previous_b {
-                return Some(previous_b.into());
-            } else {
-                self.disjunctor = ChainState::First
-            }
-        }
-
-        if let ChainState::First = self.disjunctor {
-            let previous_a = self.inner_a.previous();
-            if let Some(previous_a) = previous_a {
-                return Some(previous_a);
-            }
-        }
-
-        None
-    }
-}
-
-#[test]
-fn test_chain_paginator<'test>() {
-    let a = Box::leak(Box::new(vec![0, 1]));
-    let b = Box::leak(Box::new(vec![2, 3]));
-
-    let ap = a.paginate();
-    let bp = b.paginate();
-
-    let p = Box::leak(Box::new(Paginator::chain(ap, bp)));
-    assert_eq!(Paginator::next(p), Some(&0));
-    assert_eq!(Paginator::next(p), Some(&1));
-    assert_eq!(Paginator::next(p), Some(&2));
-    assert_eq!(Paginator::next(p), Some(&3));
-    assert_eq!(Paginator::next(p), None);
-    assert_eq!(Paginator::previous(p), Some(&3));
-    assert_eq!(Paginator::previous(p), Some(&2));
-    assert_eq!(Paginator::previous(p), Some(&1));
-    assert_eq!(Paginator::previous(p), Some(&0));
-    assert_eq!(Paginator::previous(p), None);
-}
+//     let pa = vecs.0.paginate();
+//     let pb = vecs.1.paginate();
+//     let mut chain = Paginator::chain(pa, pb);
+//     if let Some(num) = chain.next() {}
+// }
 
 /// Trait for conversion into a temporary paginator.
 pub trait Paginate<'pag> {
@@ -309,6 +144,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for Once<'pag, A> {
         'pag: 'view,
         Self: 'view;
 
+    #[inline]
     fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
@@ -321,6 +157,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for Once<'pag, A> {
         }
     }
 
+    #[inline]
     fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
@@ -357,6 +194,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for VecPag<'pag, A> {
         'pag: 'view,
         Self: 'view;
 
+    #[inline]
     fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
@@ -367,6 +205,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for VecPag<'pag, A> {
         })
     }
 
+    #[inline]
     fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
@@ -406,6 +245,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for VecPagMut<'pag, A> {
         'pag: 'view,
         Self: 'view;
 
+    #[inline]
     fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
@@ -416,6 +256,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for VecPagMut<'pag, A> {
         })
     }
 
+    #[inline]
     fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
     where
         'pag: 'view,
