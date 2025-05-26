@@ -8,7 +8,7 @@
 //! ## Paginator
 //!
 //! The heart and soul of this module is the [Paginator] trait. The core of [Paginator] looks like this:
-//! ```
+//! ```rust
 //! pub trait Paginator {
 //!     type Item;
 //!
@@ -16,7 +16,7 @@
 //!     fn previous(&mut self) -> Option<Self::Item>;
 //! }
 //! ```
-//! An iterator has two methods, next and previous, which when called, return an Option<Item>.
+//! A paginator has two methods, next and previous, which when called, return an `Option<Item>`.
 //! Calling next will return Some(Item) as long as there are elements, and once they’ve all been exhausted,
 //! will return None to indicate that iteration is finished _in this direction_. Calling previous yields the elements you saw before.
 //!
@@ -25,10 +25,10 @@
 //!
 //! ## The two forms of pagination
 //!
-//! There are two common methods which can create iterators from a collection:
+//! There are two common methods which can create paginators from a collection:
 //!
-//! - paginate(), which paginates over &T.
-//! - paginate_mut(), which paginates over &mut T.
+//! - `paginate()`, which paginates over `&T`.
+//! - ~~`paginate_mut()`, which paginates over `&mut T`.~~ (not available because of lifetime shenanigans...)
 //!
 //! Various things in the standard library and in this crate may implement one or more of the two, where appropriate.
 //!
@@ -39,6 +39,22 @@
 //!
 //! Implementing paginator is a similar experience to implementing [Iterator].
 //! I recommend reading its documentation page to understand State, Adapters, Infinity, etc.
+//! 
+//! ## Laziness
+//! 
+//! Paginators (and paginator adapters) are lazy. This means that just creating a paginator doesn’t do a whole lot.
+//! Nothing really happens until you call next. This is sometimes a source of confusion when creating a paginator solely for its side effects.
+//! For example, the map method calls a closure on each element it iterates over:
+//! 
+//! ```rust
+//! let v = vec![1, 2, 3, 4, 5];
+//! v.paginate().map(|x| println!("{x}"));
+//! ```
+//! 
+//! This will not print any values, as we only created an iterator, rather than using it.
+//! The compiler will warn us about this kind of behavior:
+//! 
+//! ```warning: unused result that must be used: paginators are lazy and do nothing unless consumed```
 
 use adapters::{Chain, ChainState, Enumerate, Map};
 
@@ -46,26 +62,20 @@ pub mod adapters;
 
 /// The core paginator trait.
 #[must_use = "paginators are lazy and do nothing unless consumed"]
-pub trait Paginator<'pag> {
+pub trait Paginator {
     /// The type of element this paginator yields.
-    type Item<'view>
-    where
-        'pag: 'view,
-        Self: 'view;
+    type Item;
 
     /// Returns the next element or `None` if you've reached the end.
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view;
+    fn next(&mut self) -> Option<Self::Item>;
 
     /// Returns the next element or `None` if you've reached the start.
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view;
+    fn previous(&mut self) -> Option<Self::Item>;
 
+    /// Adapts this paginator to one that modifies the element before visualizing it!
     fn map<F, Output>(self, f: F) -> Map<Self, F>
     where
-        for<'view> F: Fn(Self::Item<'view>) -> Output,
+        F: Fn(Self::Item) -> Output,
         Self: Sized,
     {
         Map { inner: self, f: f }
@@ -88,7 +98,7 @@ pub trait Paginator<'pag> {
     fn chain<B>(self, other: B) -> Chain<Self, B>
     where
         Self: Sized,
-        B: Paginator<'pag>,
+        B: Paginator,
     {
         Chain {
             disjunctor: ChainState::First,
@@ -111,16 +121,9 @@ pub trait Paginator<'pag> {
 
 /// Trait for conversion into a temporary paginator.
 pub trait Paginate<'pag> {
-    type Paginator: Paginator<'pag>;
+    type Paginator: Paginator;
 
     fn paginate(&'pag self) -> Self::Paginator;
-}
-
-/// Trait for conversion into a temporary mutable paginator.
-pub trait PaginateMut<'pag> {
-    type Paginator: Paginator<'pag>;
-
-    fn paginate_mut(&'pag mut self) -> Self::Paginator;
 }
 
 /// Returns a paginator with a single element.
@@ -137,18 +140,11 @@ pub struct Once<'pag, A> {
     element: &'pag A,
 }
 
-impl<'pag, A: 'pag> Paginator<'pag> for Once<'pag, A> {
-    type Item<'view>
-        = &'pag A
-    where
-        'pag: 'view,
-        Self: 'view;
+impl<'pag, A: 'pag> Paginator for Once<'pag, A> {
+    type Item = &'pag A;
 
     #[inline]
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
+    fn next(&mut self) -> Option<Self::Item> {
         if self.position == 0 {
             self.position += 1;
             Some(self.element)
@@ -158,10 +154,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for Once<'pag, A> {
     }
 
     #[inline]
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
+    fn previous(&mut self) -> Option<Self::Item> {
         if self.position == 1 {
             self.position -= 1;
             Some(self.element)
@@ -187,18 +180,11 @@ pub struct VecPag<'pag, A> {
     pub index: usize,
 }
 
-impl<'pag, A: 'pag> Paginator<'pag> for VecPag<'pag, A> {
-    type Item<'view>
-        = &'pag A
-    where
-        'pag: 'view,
-        Self: 'view;
+impl<'pag, A: 'pag> Paginator for VecPag<'pag, A> {
+    type Item = &'pag A;
 
     #[inline]
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
+    fn next(&mut self) -> Option<Self::Item> {
         self.items.get(self.index).map(|element| {
             self.index += 1;
             element
@@ -206,10 +192,7 @@ impl<'pag, A: 'pag> Paginator<'pag> for VecPag<'pag, A> {
     }
 
     #[inline]
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
+    fn previous(&mut self) -> Option<Self::Item> {
         if self.index == 0 {
             return None;
         };
@@ -232,57 +215,6 @@ impl<'pag, A: 'pag> Paginate<'pag> for Vec<A> {
     }
 }
 
-/// A paginator that edits the elements of a [Vec].
-pub struct VecPagMut<'pag, A> {
-    pub items: &'pag mut Vec<A>,
-    pub index: usize,
-}
-
-impl<'pag, A: 'pag> Paginator<'pag> for VecPagMut<'pag, A> {
-    type Item<'view>
-        = &'view mut A
-    where
-        'pag: 'view,
-        Self: 'view;
-
-    #[inline]
-    fn next<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        self.items.get_mut(self.index).map(|element| {
-            self.index += 1;
-            element
-        })
-    }
-
-    #[inline]
-    fn previous<'view>(&'view mut self) -> Option<Self::Item<'view>>
-    where
-        'pag: 'view,
-    {
-        if self.index == 0 {
-            return None;
-        };
-
-        self.items.get_mut(self.index - 1).map(|element| {
-            self.index -= 1;
-            element
-        })
-    }
-}
-
-impl<'pag, A: 'pag> PaginateMut<'pag> for Vec<A> {
-    type Paginator = VecPagMut<'pag, A>;
-
-    fn paginate_mut(&'pag mut self) -> Self::Paginator {
-        VecPagMut {
-            items: self,
-            index: 0,
-        }
-    }
-}
-
 #[test]
 fn test_vec_paginator() {
     let items = vec![0, 1, 2, 3];
@@ -297,30 +229,5 @@ fn test_vec_paginator() {
     assert_eq!(pag.previous(), Some(&2));
     assert_eq!(pag.previous(), Some(&1));
     assert_eq!(pag.previous(), Some(&0));
-    assert_eq!(pag.previous(), None);
-}
-
-#[test]
-fn test_vec_mut_paginator() {
-    let mut items = vec![0, 1, 2, 3];
-    let mut pag = VecPagMut {
-        items: &mut items,
-        index: 0,
-    };
-
-    let mut first = pag.next();
-    if let Some(f) = &mut first {
-        **f = 17;
-    }
-
-    assert_eq!(first, Some(&mut 17));
-    assert_eq!(pag.next(), Some(&mut 1));
-    assert_eq!(pag.next(), Some(&mut 2));
-    assert_eq!(pag.next(), Some(&mut 3));
-    assert_eq!(pag.next(), None);
-    assert_eq!(pag.previous(), Some(&mut 3));
-    assert_eq!(pag.previous(), Some(&mut 2));
-    assert_eq!(pag.previous(), Some(&mut 1));
-    assert_eq!(pag.previous(), Some(&mut 17));
     assert_eq!(pag.previous(), None);
 }
