@@ -78,7 +78,7 @@ pub trait Paginator {
         F: Fn(Self::Item) -> Output,
         Self: Sized,
     {
-        Map { inner: self, f: f }
+        Map { inner: self, f }
     }
 
     /// Adapts this paginator to one that also yields the index of the current element.
@@ -185,9 +185,8 @@ impl<'pag, A: 'pag> Paginator for VecPag<'pag, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.items.get(self.index).map(|element| {
+        self.items.get(self.index).inspect(|element| {
             self.index += 1;
-            element
         })
     }
 
@@ -197,9 +196,8 @@ impl<'pag, A: 'pag> Paginator for VecPag<'pag, A> {
             return None;
         };
 
-        self.items.get(self.index - 1).map(|element| {
+        self.items.get(self.index - 1).inspect(|element| {
             self.index -= 1;
-            element
         })
     }
 }

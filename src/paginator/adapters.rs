@@ -10,7 +10,7 @@ pub struct Map<A, F> {
     pub(crate) f: F,
 }
 
-impl<'pag, A, F, Output> Paginator for Map<A, F>
+impl<A, F, Output> Paginator for Map<A, F>
 where
     A: Paginator,
     F: Fn(A::Item) -> Output,
@@ -46,7 +46,7 @@ pub struct Enumerate<A> {
     pub(crate) inner: A,
 }
 
-impl<'pag, A: Paginator> Paginator for Enumerate<A> {
+impl<A: Paginator> Paginator for Enumerate<A> {
     type Item = (usize, A::Item);
 
     #[inline]
