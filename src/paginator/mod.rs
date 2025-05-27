@@ -39,21 +39,21 @@
 //!
 //! Implementing paginator is a similar experience to implementing [Iterator].
 //! I recommend reading its documentation page to understand State, Adapters, Infinity, etc.
-//! 
+//!
 //! ## Laziness
-//! 
+//!
 //! Paginators (and paginator adapters) are lazy. This means that just creating a paginator doesn’t do a whole lot.
 //! Nothing really happens until you call next. This is sometimes a source of confusion when creating a paginator solely for its side effects.
 //! For example, the map method calls a closure on each element it iterates over:
-//! 
+//!
 //! ```rust
 //! let v = vec![1, 2, 3, 4, 5];
 //! v.paginate().map(|x| println!("{x}"));
 //! ```
-//! 
+//!
 //! This will not print any values, as we only created an iterator, rather than using it.
 //! The compiler will warn us about this kind of behavior:
-//! 
+//!
 //! ```warning: unused result that must be used: paginators are lazy and do nothing unless consumed```
 
 use adapters::{Chain, ChainState, Enumerate, Map};
@@ -185,7 +185,7 @@ impl<'pag, A: 'pag> Paginator for VecPag<'pag, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.items.get(self.index).inspect(|element| {
+        self.items.get(self.index).inspect(|_| {
             self.index += 1;
         })
     }
@@ -196,7 +196,7 @@ impl<'pag, A: 'pag> Paginator for VecPag<'pag, A> {
             return None;
         };
 
-        self.items.get(self.index - 1).inspect(|element| {
+        self.items.get(self.index - 1).inspect(|_| {
             self.index -= 1;
         })
     }

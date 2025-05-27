@@ -93,10 +93,10 @@ pub enum ChainState {
     Second,
 }
 
-impl<'pag, A, B> Paginator for Chain<A, B>
+impl<A, B> Paginator for Chain<A, B>
 where
-    A: 'pag + Paginator,
-    B: 'pag + Paginator,
+    A: Paginator,
+    B: Paginator,
     B::Item: Into<A::Item>,
 {
     type Item = A::Item;
@@ -146,7 +146,7 @@ where
 }
 
 #[test]
-fn test_chain_paginator<'test>() {
+fn test_chain_paginator() {
     use crate::paginator::Paginate as _;
 
     let a = vec![0, 1];
